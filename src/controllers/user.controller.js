@@ -64,5 +64,59 @@ const registerUser = asyncHandler(async (req, res) => {
         new ApiResponse(201, createdUser, "User successfully register hua!")
     );
 });
+const loginUser = asyncHandler(async (req, res) => {
+    // Step 1: Data lo
+    const { email, username, password } = req.body;
 
-export { registerUser };
+    // Step 2: Validation
+    if (!username && !email) {
+        throw new ApiError(400, "Username ya Email zaruri hai!");
+    }
+
+    // Step 3: User dhundo
+    const user = await User.findOne({
+        $or: [{ username }, { email }]
+    });
+
+    if (!user) {
+        throw new ApiError(404, "User exist nahi karta!");
+    }
+
+    // Step 4: Password check
+    const isPasswordValid = await user.isPasswordCorrect(password);
+
+    if (!isPasswordValid) {
+        throw new ApiError(401, "Password galat hai!");
+    }
+
+    // Step 5: Tokens banao
+    const accessToken = user.generateAccessToken();
+    const refreshToken = user.generateRefreshToken();
+
+    user.refreshToken = refreshToken;
+    await user.save({ validateBeforeSave: false });
+
+    const loggedInUser = await User.findById(user._id).select(
+        "-password -refreshToken"
+    );
+
+    // Step 6: Cookies + Response
+    const options = {
+        httpOnly: true,
+        secure: true
+    };
+
+    return res
+        .status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", refreshToken, options)
+        .json(
+            new ApiResponse(
+                200,
+                { user: loggedInUser, accessToken, refreshToken },
+                "Login successful!"
+            )
+        );
+});
+
+export { registerUser, loginUser };
